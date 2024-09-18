@@ -5,3 +5,4 @@ nohup.out*
 __pycache__/
 cache/
 causal_graphs/
+counterfactuals/
