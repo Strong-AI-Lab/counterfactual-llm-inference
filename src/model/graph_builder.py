@@ -41,6 +41,9 @@ class GraphBuilder(abc.ABC):
             graph.add_edge(source, target, **attributes, observed=False)
 
         return graph
+    
+    def __call__(self, text_name : str, text : str) -> nx.Graph:
+        return self.build_graph(text_name, text)
 
 
         
