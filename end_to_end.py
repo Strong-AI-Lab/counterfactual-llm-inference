@@ -9,12 +9,8 @@ import random
 import networkx as nx
 
 from src.data.dataset import DATASETS
-from src.model.graph_builder import BUILDERS
-from src.model.graph_merger import MERGERS
-from src.model.interpreter import INTERPRETERS
+from src.model.models import BUILDERS, MERGERS, INTERPRETERS, INFERENCE_ORACLES, EVALUATORS
 from causal.counterfactual_inference import Query
-from src.model.inference_oracle import INFERENCE_ORACLES
-from src.model.evaluator import EVALUATORS
 from src.visualisation.visualisation import save_graph_as_png
 
 

@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Union, List
 import networkx as nx
 
 from src.causal.counterfactual_inference import Query
-from src.model.inference_oracle import INFERENCE_ORACLES
+from src.model.models import INFERENCE_ORACLES
 from src.visualisation.visualisation import save_graph_as_png
 
 

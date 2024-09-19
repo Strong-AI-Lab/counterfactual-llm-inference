@@ -37,5 +37,3 @@ class GraphMerger(abc.ABC):
 
 
 
-MERGERS = {
-}

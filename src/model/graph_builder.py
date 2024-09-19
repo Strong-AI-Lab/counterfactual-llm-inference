@@ -170,11 +170,3 @@ class GPTGraphBuilder(GraphBuilder):
                 'hidden_edges' : hidden_edges}
 
 
-
-
-
-
-
-BUILDERS = {
-    'gpt' : GPTGraphBuilder
-}

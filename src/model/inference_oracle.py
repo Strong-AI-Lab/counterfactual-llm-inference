@@ -40,10 +40,3 @@ class DummyOracle(InferenceOracle):
     def predict(self, target_node_attributes : Dict[str,str], parent_node_attributes : List[Dict[str,str]], edge_attributes : List[Dict[str,str]]) -> str:
         return "dummy_value"
 
-
-
-
-
-INFERENCE_ORACLES = {
-    "dummy": DummyOracle
-}

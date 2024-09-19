@@ -8,8 +8,7 @@ import tqdm
 import networkx as nx
 
 from src.data.dataset import DATASETS
-from src.model.graph_builder import BUILDERS
-from src.model.graph_merger import MERGERS
+from src.model.models import BUILDERS, MERGERS
 from src.visualisation.visualisation import save_graph_as_png
 
 
