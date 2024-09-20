@@ -15,6 +15,9 @@ from src.model.singleton import handle_config_singleton
 from src.visualisation.visualisation import save_graph_as_png
 
 
+DEFAULT_SCORED_GRAPHS_SAVE_FOLDER = 'scored_graphs'
+
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Compute counterfactual query on causal graph')
@@ -85,6 +88,11 @@ def main(data_path : Union[str,List[str]],
     evaluator = EVALUATORS[evaluator_class](**evaluator_config)
 
 
+    if output_path is None:
+        output_path = os.path.join(DEFAULT_SCORED_GRAPHS_SAVE_FOLDER, f'scored_graphs_{time.strftime("%Y%m%d-%H%M%S")}')
+    os.makedirs(output_path, exist_ok=True)
+
+
     # Iteratively build causal graphs
     for i in tqdm.trange(iterations):
         # Build graphs
@@ -121,19 +129,31 @@ def main(data_path : Union[str,List[str]],
         # Evaluate counterfactual graphs
         scores = []
         for queries_cgi in tqdm.tqdm(counterfactual_graphs):
-            scores_i = [evaluator.evaluate(g) for g in queries_cgi]
-            score = sum(scores_i) / len(scores_i)
-            scores.append(score)
+            scores_cgi = [evaluator.evaluate(g) for g in queries_cgi]
+            scores.append(scores_cgi)
+        
 
-        # Log scores
-        # ...
+        # Save graphs
+        output_path_i = os.path.join(output_path, f'iteration_{i}')
+        os.makedirs(output_path_i, exist_ok=True)
+
+        for j, queries_cgi in enumerate(counterfactual_graphs):
+            score_cgi = sum(scores[j]) / len(scores[j])
+            output_path_ij = os.path.join(output_path_i, f'graph_{j}_score={score_cgi}')
+            os.makedirs(output_path_ij, exist_ok=True)
+
+            nx.write_gml(queries_cgi[0], os.path.join(output_path_ij, f'initial_graph_score={scores[j][0]}.gml'))
+            save_graph_as_png(queries_cgi[0], os.path.join(output_path_ij, f'initial_graph_score={scores[j][0]}.png'))
+
+            for k, g in enumerate(queries_cgi[1:]):
+                nx.write_gml(g, os.path.join(output_path_ij, f'counterfactual_graph_{k}_score={scores[j][k+1]}.gml'))
+                save_graph_as_png(g, os.path.join(output_path_ij, f'counterfactual_graph_{k}_score={scores[j][k+1]}.png'))
+        
 
         # Update graph builder and oracle
         # builder.update(scores)
         # oracle.update(scores)
                 
-
-
 
 
 
