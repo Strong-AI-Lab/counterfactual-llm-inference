@@ -1,12 +1,13 @@
 
 import abc
+from typing import Tuple
 import networkx as nx
 
 
 class Evaluator(abc.ABC):
     
     @abc.abstractmethod
-    def evaluate(self, graph : nx.DiGraph) -> float:
+    def evaluate(self, graph : nx.DiGraph) -> Tuple[float, float, str]:
         """
         Evaluates the graph and returns a score
 
@@ -19,8 +20,12 @@ class Evaluator(abc.ABC):
         -------
         float
             The score of the graph
+        float
+            The confidence of the score (between 0 and 1)
+        str
+            The explanation of the score
         """
         pass
 
-    def __call__(self, graph : nx.DiGraph) -> float:
+    def __call__(self, graph : nx.DiGraph) -> Tuple[float, float, str]:
         return self.evaluate(graph)

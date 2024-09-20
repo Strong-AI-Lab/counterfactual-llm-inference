@@ -63,7 +63,7 @@ def main(graph_save : str,
 
     # Save graph as png
     png_output_path = output_path.replace('.gml', '.png')
-    save_graph_as_png(inference_graph, png_output_path, node_labels=['description','updated_value'])
+    save_graph_as_png(inference_graph, png_output_path, node_labels=['description','current_value','updated_value'])
 
 
 

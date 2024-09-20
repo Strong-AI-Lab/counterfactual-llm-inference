@@ -273,7 +273,17 @@ class Query():
             paths = self._find_causal_paths(graph, node, self.target_node, known_nodes - set([node]))
             nodes_to_keep.update(set([node for path in paths for node in path]))
 
-        return graph.subgraph(nodes_to_keep)
+        computation_graph = graph.subgraph(nodes_to_keep)
+    
+        computation_graph.nodes[self.target_node]['target'] = True
+        if self.observation_nodes is not None:
+            for observation_node in self.observation_nodes:
+                computation_graph.nodes[observation_node]['observation'] = True
+        if self.intervention_nodes is not None:
+            for intervention_node in self.intervention_nodes:
+                computation_graph.nodes[intervention_node]['intervention'] = True
+
+        return computation_graph
 
 
     def _find_causal_paths(self, graph : nx.DiGraph, source : str, target : str, conditioning_nodes : Optional[List[str]] = None) -> List[List[str]]: # TODO: to optimise, filter out paths on the go
@@ -340,9 +350,11 @@ class Query():
             target_node_attrs = graph.nodes[target_node]
             parent_attrs = [graph.nodes[parent] for parent in parents]
             edge_attrs = [graph.edges[parent, target_node] for parent in parents]
-            value = self.oracle(target_node_attrs, parent_attrs, edge_attrs) # Compute target node value with oracle
+            value, confidence, explanation = self.oracle(target_node_attrs, parent_attrs, edge_attrs) # Compute target node value with oracle
 
             graph.nodes[target_node]['updated_value'] = value
+            graph.nodes[target_node]['updated_value_confidence'] = confidence
+            graph.nodes[target_node]['updated_value_explanation'] = explanation
 
     def _estimate_target_value_from_parents(self, graph : nx.DiGraph, target_node : str, conditioning_nodes : List[str]) -> Tuple[str, nx.DiGraph]: # TODO: current version only computes from parents, suitable for counterfactuals but due to the abduction step but leaves out collider information in other cases. to integrate
         """

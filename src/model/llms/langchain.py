@@ -38,7 +38,6 @@ class LangchainSingleton(Singleton):
             return ChatOllama(**kwargs)
         else:
             raise ValueError(f"Model {model_type} not supported.")
-        
 
     def _answer(self, system_message : str, user_message : str, structured_output_class : Optional[Type] = None):
         messages = [
@@ -156,11 +155,11 @@ class LangchainInferenceOracleSingleton(LangchainSingleton, InferenceOracle):
 
         return system_prompt, prompt
     
-    def predict(self, target_node_attributes : Dict[str,str], parent_node_attributes : List[Dict[str,str]], edge_attributes : List[Dict[str,str]]) -> str:
+    def predict(self, target_node_attributes : Dict[str,str], parent_node_attributes : List[Dict[str,str]], edge_attributes : List[Dict[str,str]]) -> Tuple[str, float, str]:
         system_prompt, prompt = self._build_prompt(target_node_attributes, parent_node_attributes, edge_attributes)
         answer = self._answer(system_prompt, prompt, LangchainInferenceOracleSingleton.CausalValue)
         
-        return answer.estimated_value
+        return answer.estimated_value, answer.confidence, answer.explanation
 
 
 
@@ -200,26 +199,16 @@ class LangchainEvaluatorSingleton(LangchainSingleton, Evaluator):
     class GraphEvaluation(pydantic.BaseModel):
         """ Evaluation of a causal graph """
         
-        score : float = pydantic.Field(description="The score of the evaluation.", default=0.0)
-        confidence : float = pydantic.Field(description="The confidence of the model in the evaluation.", default=0.0)
+        score : float = pydantic.Field(description="The score of the evaluation.", default=-1.0)
+        confidence : float = pydantic.Field(description="The confidence of the model in the evaluation.", default=-1.0)
         explanation : str = pydantic.Field(description="The explanation of the evaluation.", default='')
 
-        # event_scores : List[float] = pydantic.Field(description="The scores of the individual events.")
-        # event_confidences : List[float] = pydantic.Field(description="The confidences of the model in the individual events scores.")
-        # event_explanations : List[str] = pydantic.Field(description="The explanations of the individual eventss scores.")
-
     def _build_prompt(self, graph : nx.DiGraph) -> Tuple[str,str]:
-        # system_prompt = "Your task is to evaluate the plausibility of a set of events linked by causal relationships. " \
-        #                 "The events are described by a high-level description and a value. The events are linked by causal relationships. The causal relationships are described by a high-level description. " \
-        #                 "The overall plausibility of the set of events corresponds to the factorisation of the plausibility of the each event's occurence and given its causes. " \
-        #                 "Reason step-by-step. Start by describing the events and the causal relationships. Then, provide scores for each event. " \
-        #                 "Explain with your own words the reasons for the plausibility of each event and provide confidence scores as a float between 0 and 1 for each evaluation score. " \
-        #                 "Finally, provide an overall score for the plausibility of the set of events along with an explantion describing your reasoning. Provide an overall confidence score as a float between 0 and 1. Follow strictly the provided format."
         system_prompt = "Your task is to evaluate the plausibility of a set of events linked by causal relationships. " \
                         "The events are described by a high-level description and a value. The events are linked by causal relationships. The causal relationships are described by a high-level description. " \
                         "The overall plausibility of the set of events corresponds to the factorisation of the plausibility of the each event's occurence and given its causes. " \
                         "Reason step-by-step. Start by describing the events and the causal relationships. Explain with your own words the reasons for the plausibility of each event. " \
-                        "Finally, provide an overall score for the plausibility of the set of events along with an explantion describing your reasoning. Provide an overall confidence score as a float between 0 and 1. Follow strictly the provided format."
+                        "Finally, provide an overall score for the plausibility of the sequence of events. Give an explanation describing your reasoning. Provide an overall confidence score as a float between 0 and 1. Follow strictly the provided format."
         
         ordered_nodes = list(nx.topological_sort(graph))
         order = {node: i for i, node in enumerate(ordered_nodes)}
@@ -232,11 +221,11 @@ class LangchainEvaluatorSingleton(LangchainSingleton, Evaluator):
 
         return system_prompt, prompt
 
-    def evaluate(self, graph : nx.DiGraph) -> float:
+    def evaluate(self, graph : nx.DiGraph) -> Tuple[float, float, str]:
         system_prompt, prompt = self._build_prompt(graph)
         answer = self._answer(system_prompt, prompt, LangchainEvaluatorSingleton.GraphEvaluation)
         
-        return answer.score
+        return answer.score, answer.confidence, answer.explanation
 
 
 

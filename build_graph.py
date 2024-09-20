@@ -66,7 +66,7 @@ def main(data_path : Union[str,List[str]],
 
     # Save graph as png
     png_output_path = output_path.replace('.gml', '.png')
-    save_graph_as_png(merged_graph, png_output_path)
+    save_graph_as_png(merged_graph, png_output_path, node_labels=['description', 'type', 'values', 'current_value', 'context'], edge_labels=['description', 'details'])
 
 
 

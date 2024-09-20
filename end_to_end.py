@@ -113,7 +113,7 @@ def main(data_path : Union[str,List[str]],
         # Answer counterfactual queries (num_queries per graph)
         counterfactual_graphs = []
         for graph in tqdm.tqdm(graphs, leave=False):
-            cg_i = [graph]
+            cg_j = [graph]
             for _ in tqdm.trange(num_queries, leave=False):
                 query_config = generate_random_counterfactual_query(graph, max_intervention_nodes, interpreter)
 
@@ -122,15 +122,21 @@ def main(data_path : Union[str,List[str]],
                 print(repr(query))
 
                 _, computation_graph = query()
-                cg_i.append(computation_graph)
-            counterfactual_graphs.append(cg_i)
+                cg_j.append(computation_graph)
+            counterfactual_graphs.append(cg_j)
 
 
         # Evaluate counterfactual graphs
         scores = []
-        for queries_cgi in tqdm.tqdm(counterfactual_graphs):
-            scores_cgi = [evaluator.evaluate(g) for g in queries_cgi]
-            scores.append(scores_cgi)
+        for cg_j in tqdm.tqdm(counterfactual_graphs):
+            scores_cgj = []
+            for g in cg_j:
+                score, confidence, explanation = evaluator.evaluate(g)
+                scores_cgj.append(score)
+                g.graph['plausibility_score'] = score
+                g.graph['plausibility_score_confidence'] = confidence
+                g.graph['plausibility_score_explanation'] = explanation
+            scores.append(scores_cgj)
         
 
         # Save graphs
@@ -143,11 +149,11 @@ def main(data_path : Union[str,List[str]],
             os.makedirs(output_path_ij, exist_ok=True)
 
             nx.write_gml(queries_cgi[0], os.path.join(output_path_ij, f'initial_graph_score={scores[j][0]}.gml'))
-            save_graph_as_png(queries_cgi[0], os.path.join(output_path_ij, f'initial_graph_score={scores[j][0]}.png'))
+            save_graph_as_png(queries_cgi[0], os.path.join(output_path_ij, f'initial_graph_score={scores[j][0]}.png'), node_labels=['description', 'type', 'values', 'current_value', 'context'], edge_labels=['description', 'details'])
 
             for k, g in enumerate(queries_cgi[1:]):
                 nx.write_gml(g, os.path.join(output_path_ij, f'counterfactual_graph_{k}_score={scores[j][k+1]}.gml'))
-                save_graph_as_png(g, os.path.join(output_path_ij, f'counterfactual_graph_{k}_score={scores[j][k+1]}.png'))
+                save_graph_as_png(g, os.path.join(output_path_ij, f'counterfactual_graph_{k}_score={scores[j][k+1]}.png'), node_labels=['description','current_value','updated_value'])
         
 
         # Update graph builder and oracle
