@@ -9,6 +9,7 @@ import networkx as nx
 
 from src.data.dataset import DATASETS
 from src.model.models import BUILDERS, MERGERS
+from src.model.singleton import handle_config_singleton
 from src.visualisation.visualisation import save_graph_as_png
 
 
@@ -76,4 +77,6 @@ if __name__ == '__main__':
     with open(config_path, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
+    config = handle_config_singleton(config)
+    
     main(**config)

@@ -10,7 +10,7 @@
 
 
 
-:warning: **Warning:** Inference computations does not handle colliders yet. The generated computation graph shows the structure with colliders but the result of inference does not integrate information from colliders. Colliders are v-structures X -> Z <- Y with Z observed, creating a dependency between X and Y. As of now, Z is ignored in the inference computations. In practice, favour using intervention nodes and counterfactual setting as this is the way this repository is intended to be used.
+:warning: **Warning:** Inference computations does not handle colliders yet. The generated computation graph shows the structure with colliders but the result of inference does not integrate information from colliders. Colliders are v-structures X -> Z <- Y with Z observed, creating a dependency between X and Y. As of now, Z is ignored in the inference computations. In practice, modifying observations can lead to nonsensical causal graphs. Favour using intervention nodes and counterfactual setting as this is the way this repository is intended to be used. 
 
 
 ## Causal Graph Attributes

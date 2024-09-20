@@ -78,7 +78,7 @@ class GPTGraphBuilder(GraphBuilder):
         self.reg_edge_value = re.compile(r"^\s*(?P<description>.*); (?P<details>.*)\s*\n?$")
 
     def _build_prompt(self, text : str) -> str:
-        prompt = "Your task is to summarise a text into a list of instanciated causal variables and write down the causal relationships between them. Variables should be as atomic and detailled as possible. Causal relationships should describe how the value of the first variable affects the value of the second. " \
+        prompt = "Your task is to summarise a text into a list of instantiated causal variables and write down the causal relationships between them. Variables should be as atomic and detailled as possible. Causal relationships should describe how the value of the first variable affects the value of the second. " \
                 "One sentence usually describes two or more variables and connects them. For each variable, ask 'what are the causes of this variable's value? Is it fully explained by the available information or are some causes missing?'. " \
                 "If some causes seem to be missing, create new (hidden) variables for them with the format 'hi' as indicated below. Hidden variables represent missing information to fully explain the value of one or more observed variables. " \
                 "Hidden variables cannot have incoming edges. " \

@@ -13,7 +13,7 @@ class InferenceOracle(abc.ABC):
         Parameters
         ----------
         target_node_attributes : Dict[str,str]
-            The attributes of the target node. Required are: ``description`, `type`, `values` and `context`
+            The attributes of the target node. Required are: `description`, `type`, `values` and `context`
         parent_node_attributes : List[Dict[str,str]]
             The attributes of the parent nodes. Required are: `description`, `type`, `values`, `context` and `updated_value`
         edge_attributes : List[Dict[str,str]]

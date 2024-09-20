@@ -21,4 +21,7 @@ class Interpreter(abc.ABC):
             The proposed alternative/counterfactual instantiation of the node
         """
         pass
+
+    def __call__(self, attrs : Dict[str, Any]) -> str:
+        return self.interpret(attrs)
         

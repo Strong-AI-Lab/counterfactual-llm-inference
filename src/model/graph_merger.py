@@ -7,7 +7,7 @@ import networkx as nx
 class GraphMerger(abc.ABC):
         
         @abc.abstractmethod
-        def _find_similar_nodes(self, graphs : List[nx.DiGraph]) -> List[Dict[Tuple[str,Any]]]:
+        def _find_similar_nodes(self, graphs : List[nx.DiGraph]) -> List[Dict[str,Tuple[str,Any]]]:
             pass
 
         def merge_graphs(self, graphs : List[nx.DiGraph]) -> nx.DiGraph:

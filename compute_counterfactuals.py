@@ -8,6 +8,7 @@ import networkx as nx
 
 from src.causal.counterfactual_inference import Query
 from src.model.models import INFERENCE_ORACLES
+from src.model.singleton import handle_config_singleton
 from src.visualisation.visualisation import save_graph_as_png
 
 
@@ -62,7 +63,7 @@ def main(graph_save : str,
 
     # Save graph as png
     png_output_path = output_path.replace('.gml', '.png')
-    save_graph_as_png(inference_graph, png_output_path, node_labels='updated_value')
+    save_graph_as_png(inference_graph, png_output_path, node_labels=['description','updated_value'])
 
 
 
@@ -72,5 +73,7 @@ if __name__ == '__main__':
     
     with open(config_path, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
+
+    config = handle_config_singleton(config)
 
     main(**config)

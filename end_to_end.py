@@ -10,7 +10,8 @@ import networkx as nx
 
 from src.data.dataset import DATASETS
 from src.model.models import BUILDERS, MERGERS, INTERPRETERS, INFERENCE_ORACLES, EVALUATORS
-from causal.counterfactual_inference import Query
+from src.causal.counterfactual_inference import Query
+from src.model.singleton import handle_config_singleton
 from src.visualisation.visualisation import save_graph_as_png
 
 
@@ -22,10 +23,10 @@ def parse_args():
 
 
 def generate_random_counterfactual_query(graph : nx.DiGraph, max_intervention_nodes : int, interpreter : Callable) -> Dict[str,Any]:
-    candidate_targets = [node for node in graph.nodes if len(graph.predecessors(node)) > 0]
+    candidate_targets = [node for node in graph.nodes if len(list(graph.predecessors(node))) > 0]
     target_node = random.choice(list(candidate_targets))
 
-    candidate_interventions = list(graph.ancestors(target_node))
+    candidate_interventions = list(nx.ancestors(graph, target_node))
     nb_interventions = random.randint(1, min(max_intervention_nodes, len(candidate_interventions)))
     intervention_nodes = random.sample(candidate_interventions, nb_interventions)
 
@@ -52,7 +53,7 @@ def main(data_path : Union[str,List[str]],
          merger_class : Optional[str] = None, 
          merger_config : Optional[Dict[str,Any]] = None, 
          iterations : int = 1,
-         beam_width : int = 2,
+         num_graphs : int = 2,
          num_queries : int = 5,
          max_intervention_nodes : int = 3,
          graph_traversal_cutoff : Optional[int] = None,
@@ -88,7 +89,7 @@ def main(data_path : Union[str,List[str]],
     for i in tqdm.trange(iterations):
         # Build graphs
         graphs = []
-        for _ in tqdm.trange(beam_width, leave=False):
+        for j in tqdm.trange(num_graphs, leave=False):
             data_graphs = []
             for name, text in tqdm.tqdm(data, leave=False):
                 graph = builder.build_graph(name, text)
@@ -97,7 +98,7 @@ def main(data_path : Union[str,List[str]],
             if len(data_graphs) > 1:
                 merged_data_graph = merger.merge_graphs(data_graphs)
             else:
-                merged_data_graph = graphs[0]
+                merged_data_graph = data_graphs[0]
             
             graphs.append(merged_data_graph)
 
@@ -109,7 +110,7 @@ def main(data_path : Union[str,List[str]],
                 query_config = generate_random_counterfactual_query(graph, max_intervention_nodes, interpreter)
 
                 # Compute counterfactuals
-                query = Query(graph, oracle, **query_config, graph_traversal_cutoff=graph_traversal_cutoff, compute_counterfactuals=True)
+                query = Query(graph, oracle, **query_config, traversal_cutoff=graph_traversal_cutoff, compute_counterfactuals=True)
                 print(repr(query))
 
                 _, computation_graph = query()
@@ -120,7 +121,8 @@ def main(data_path : Union[str,List[str]],
         # Evaluate counterfactual graphs
         scores = []
         for queries_cgi in tqdm.tqdm(counterfactual_graphs):
-            score = evaluator.evaluate(queries_cgi)
+            scores_i = [evaluator.evaluate(g) for g in queries_cgi]
+            score = sum(scores_i) / len(scores_i)
             scores.append(score)
 
         # Log scores
@@ -143,4 +145,5 @@ if __name__ == '__main__':
     with open(config_path, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
+    config = handle_config_singleton(config)
     main(**config)
