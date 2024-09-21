@@ -34,16 +34,17 @@ def handle_config_singleton(config : Dict[str,Any]) -> Dict[str,Any]:
 
 
 class Singleton(abc.ABC):
-    _instance = None
+    _instances = {}
 
     @abc.abstractmethod
     def _create_instance(self):
         pass
     
-    def __init__(self, *args, **kwargs):
-        if Singleton._instance is None:
-            Singleton._instance = self._create_instance(*args, **kwargs)
+    def __init__(self, model_type, *args, **kwargs):
+        self.model_type = model_type
+        if model_type not in Singleton._instances:
+            Singleton._instances[model_type] = self._create_instance(model_type, *args, **kwargs)
 
     @property
     def instance(self):
-        return Singleton._instance
+        return Singleton._instances[self.model_type]

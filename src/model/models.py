@@ -1,7 +1,14 @@
 
 from src.model.graph_builder import GPTGraphBuilder
 from src.model.inference_oracle import DummyOracle
-from src.model.llms.langchain import LangchainGraphBuilderSingleton, LangchainGraphMergerSingleton, LangchainInferenceOracleSingleton, LangchainInterpreterSingleton, LangchainEvaluatorSingleton
+from src.model.llms.langchain import (
+    LangchainGraphBuilderSingleton, 
+    LangchainGraphAbstractionMergerSingleton, 
+    LangchainGraphAnalogyMergerSingleton, 
+    LangchainInferenceOracleSingleton, 
+    LangchainInterpreterSingleton, 
+    LangchainEvaluatorSingleton
+)
 
 
 
@@ -13,7 +20,8 @@ BUILDERS = {
 
 
 MERGERS = {
-    'langchain_singleton' : LangchainGraphMergerSingleton
+    'langchain_abstraction_singleton' : LangchainGraphAbstractionMergerSingleton,
+    'langchain_analogy_singleton' : LangchainGraphAnalogyMergerSingleton
 }
 
 

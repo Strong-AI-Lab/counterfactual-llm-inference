@@ -1,21 +1,26 @@
 
-from typing import Any, Type, Optional, List, Tuple, Dict
+from typing import Any, Set, Type, Optional, List, Tuple, Dict
+import numpy as np
 import networkx as nx
 
 from src.model.singleton import Singleton
 from src.model.graph_builder import GraphBuilder
-from src.model.graph_merger import GraphMerger
+from src.model.graph_merger import GraphAbstractionMerger, GraphAnalogyMerger
 from src.model.inference_oracle import InferenceOracle
 from src.model.interpreter import Interpreter
 from src.model.evaluator import Evaluator
 
 import pydantic
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_google_vertexai import ChatVertexAI
+from langchain_google_vertexai.embeddings import VertexAIEmbeddings
 from langchain_anthropic import ChatAnthropic
 from langchain_mistralai import ChatMistralAI
+from langchain_mistralai.embeddings import MistralAIEmbeddings
 from langchain_ollama import ChatOllama
+from langchain_ollama.embeddings import OllamaEmbeddings
+from sklearn.cluster import DBSCAN
 
 
 
@@ -52,7 +57,32 @@ class LangchainSingleton(Singleton):
         response = model.invoke(messages)
 
         return response
+
+
+class LangchainEmbeddingsSingleton(Singleton):
+
+    def _create_instance(self, model_type, **kwargs):
+        if model_type == 'openai_embeddings':
+            return OpenAIEmbeddings(**kwargs)
+        elif model_type == 'google_embeddings':
+            return VertexAIEmbeddings(**kwargs)
+        elif model_type == 'mistral_embeddings':
+            return MistralAIEmbeddings(**kwargs)
+        elif model_type == 'ollama_embeddings':
+            return OllamaEmbeddings(**kwargs)
+        else:
+            raise ValueError(f"Model {model_type} not supported.")
+        
+    def _embed(self, text : str) -> np.ndarray:
+        embeddings = self.instance.embed_query(text) # [D]
+        return np.array(embeddings)
     
+    def _embed_batch(self, texts : List[str]) -> np.ndarray:
+        embeddings = self.instance.embed_documents(texts) # [B,D]
+        return np.array(embeddings)
+
+
+
 
 
 class LangchainGraphBuilderSingleton(LangchainSingleton, GraphBuilder):
@@ -120,8 +150,114 @@ class LangchainGraphBuilderSingleton(LangchainSingleton, GraphBuilder):
 
 
 
-class LangchainGraphMergerSingleton(LangchainSingleton, GraphMerger):
-    pass
+class LangchainGraphAbstractionMergerSingleton(LangchainEmbeddingsSingleton, GraphAbstractionMerger):
+
+    def __init__(self, model_type : str, eps : float = 0.5, message_propagation : int = 1, **kwargs):
+        super().__init__(model_type, **kwargs)
+        self.eps = eps
+        self.message_propagation = message_propagation
+        self.clustering_algorithm = DBSCAN(eps=self.eps)
+
+    def _get_node_str(self, node : Dict[str,str]) -> str:
+        return f"description: {node['description']}, type: {node['type']}, values: {node['values']}, context: {node['context']}"
+
+    def _build_node_inputs(self, graph : nx.DiGraph) -> List[str]:
+        node_inputs = []
+        for node, attrs in graph.nodes(data=True):
+            node_str = self._get_node_str(attrs)
+            if self.message_propagation > 0:
+                neighbours = nx.single_source_shortest_path_length(graph, node, cutoff=self.message_propagation)
+                node_str += '\n' + '\n'.join([f'neighbour at distance {rank} from node: {self._get_node_str(graph.nodes[n])}' for n, rank in neighbours.items() if n != node])
+            node_inputs.append(node_str)
+        return node_inputs
+    
+    def _find_similar_nodes(self, graphs : List[nx.DiGraph]) -> List[Dict[str,Tuple[str,Any]]]:
+        # Generate embeddings and similarity matrix
+        node_inputs = [node_input for graph in graphs for node_input in self._build_node_inputs(graph)]
+        embeddings = self._embed_batch(node_inputs) # [N,D] with N = N_g0 + N_g1 + ... + N_gn
+
+        # Build clusters
+        clustering = self.clustering_algorithm.fit(embeddings)
+        labels = clustering.labels_
+        cores = clustering.core_sample_indices_
+
+        # Build mapping
+        reversed_labels_dict = {l : [] for l in range(len(cores))}
+        for i, label in enumerate(labels):
+            if label != -1:
+                reversed_labels_dict[label].append(i)
+
+        core_attrs = []
+        graph_idxs = [i for i, graph in enumerate(graphs) for _ in range(len(graph.nodes))]
+        nodes_idxs = [i for graph in graphs for i in graph.nodes]
+        for i in cores:
+            graph_idx = graph_idxs[i]
+            node_idx = nodes_idxs[i]
+
+            attrs = graphs[graph_idx].nodes[node_idx]
+            cluster_attrs = [graphs[graph_idxs[j]].nodes[nodes_idxs[j]] for j in reversed_labels_dict[i]]
+            attrs['values'] = '; '.join([attrs['values']] + [attr['values'] for attr in cluster_attrs])
+            attrs['context'] = '; '.join([attrs['context']] + [attr['context'] for attr in cluster_attrs])
+            if not attrs['observed']:
+                attrs['observed'] = any([attr['observed'] for attr in cluster_attrs])
+
+            core_attrs.append((f'c{i}-{node_idx}', attrs))
+
+        # Update similar nodes
+        similar_nodes = []
+        offset_idx = 0
+        for graph in graphs:
+            node_mapping = {}
+            for j, node in enumerate(graph.nodes):
+                label = labels[offset_idx+j]
+                if label != -1:
+                    node_mapping[node] = core_attrs[label]
+            similar_nodes.append(node_mapping)
+            offset_idx += len(graph.nodes)
+
+        return similar_nodes
+    
+
+class LangchainGraphAnalogyMergerSingleton(LangchainEmbeddingsSingleton, GraphAnalogyMerger):
+
+    def __init__(self, model_type : str, eps : float = 0.5, message_propagation : int = 1, **kwargs):
+        super().__init__(model_type, **kwargs)
+        self.eps = eps
+        self.message_propagation = message_propagation
+        self.clustering_algorithm = DBSCAN(eps=self.eps)
+
+    def _get_node_str(self, node : Dict[str,str]) -> str:
+        return f"description: {node['description']}, type: {node['type']}, values: {node['values']}, context: {node['context']}"
+
+    def _build_node_inputs(self, graph : nx.DiGraph) -> List[str]:
+        node_inputs = []
+        for node, attrs in graph.nodes(data=True):
+            node_str = self._get_node_str(attrs)
+            if self.message_propagation > 0:
+                neighbours = nx.single_source_shortest_path_length(graph, node, cutoff=self.message_propagation)
+                node_str += '\n' + '\n'.join([f'neighbour at distance {rank} from node: {self._get_node_str(graph.nodes[n])}' for n, rank in neighbours.items() if n != node])
+            node_inputs.append(node_str)
+        return node_inputs
+
+    def _find_analogical_nodes(self, graphs: List[nx.DiGraph]) -> List[Set[str]]:
+        # Generate embeddings and similarity matrix
+        node_inputs = [node_input for graph in graphs for node_input in self._build_node_inputs(graph)]
+        embeddings = self._embed_batch(node_inputs)
+
+        # Build clusters
+        clustering = self.clustering_algorithm.fit(embeddings)
+        labels = clustering.labels_
+
+        # Build analogical sets
+        node_idxs = [node for graph in graphs for node in range(len(graph.nodes))]
+        analogical_nodes = [set() for _ in range(len(clustering.core_sample_indices_))]
+        for i, label in enumerate(labels):
+            if label != -1:
+                analogical_nodes[label].add(node_idxs[i])
+
+        return analogical_nodes
+
+
 
 
 
@@ -131,7 +267,7 @@ class LangchainInferenceOracleSingleton(LangchainSingleton, InferenceOracle):
         """ Estimated value, confidence and explanation of a causal variable """
         
         estimated_value : str = pydantic.Field(description="The current instanciation of the variable.", default='')
-        confidence : float = pydantic.Field(description="The confidence of the model in the estimated value.", default='')
+        confidence : float = pydantic.Field(description="The confidence of the model in the estimated value.", default=-1.0)
         explanation : str = pydantic.Field(description="The explanation of the estimated value given the attributes and values of the parent causes.", default='')
 
     def _build_node_description(self, node_attributes : Dict[str,str]) -> str:
