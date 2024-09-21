@@ -11,7 +11,9 @@ from src.model.interpreter import Interpreter
 from src.model.evaluator import Evaluator
 
 import pydantic
+from langchain.output_parsers import PydanticOutputParser, RetryOutputParser
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.prompt_values import StringPromptValue
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_google_vertexai import ChatVertexAI
 from langchain_google_vertexai.embeddings import VertexAIEmbeddings
@@ -26,9 +28,9 @@ from sklearn.cluster import DBSCAN
 
 class LangchainSingleton(Singleton):
 
-    def __init__(self, model_type : str, **kwargs):
-        super().__init__(model_type=model_type, **kwargs)
-        self.model_type = model_type
+    def __init__(self, model_type : str, max_retries : int = 7, **kwargs):
+        super().__init__(model_type, **kwargs)
+        self.max_retries = max_retries
 
     def _create_instance(self, model_type, **kwargs):
         if model_type == 'openai':
@@ -52,9 +54,18 @@ class LangchainSingleton(Singleton):
         model = self.instance
 
         if structured_output_class is not None:
-            model = model.with_structured_output(structured_output_class)
-        
-        response = model.invoke(messages)
+            model = model.with_structured_output(structured_output_class, include_raw=True)
+            answer = model.invoke(messages)
+
+            if 'parsed' in answer and answer['parsed'] is not None and answer['parsing_error'] is None: # If the parsing was successful
+                response = answer['parsed']
+            else: # Attempt to recover from parsing error
+                fix_parser = RetryOutputParser.from_llm(parser=PydanticOutputParser(pydantic_object=structured_output_class), llm=self.instance, max_retries=self.max_retries)
+                response = answer['raw'].response_metadata['message']['tool_calls'][0]['function']['arguments'] # Works for all ChatModels
+                response = fix_parser.parse_with_prompt(str(response), StringPromptValue(text=f"{system_message}\n\n{user_message}"))
+
+        else:
+            response = model.invoke(messages)
 
         return response
 
@@ -86,56 +97,107 @@ class LangchainEmbeddingsSingleton(Singleton):
 
 
 class LangchainGraphBuilderSingleton(LangchainSingleton, GraphBuilder):
-    class CausalVariable(pydantic.BaseModel):
+    class CausalVariable(pydantic.BaseModel): # /!\ The descriptions in nested classes are not forwarded to the model
         """ Attributes of a causal variable """
-        
+
+        node_id : str = pydantic.Field(description="A unique string identifier for the causal variable, e.g. '0', '1', etc.")
         description : str = pydantic.Field(description="A high-level short atomic description of the causal variable.", default='')
         type : str = pydantic.Field(description="The type of the variable (e.g. bool, int, set element, range element).", default='')
         values : str = pydantic.Field(description="The set of possible values, if applicable.", default='')
         current_value : str = pydantic.Field(description="The current instanciation of the variable.", default='')
-        context : str = pydantic.Field(description="Additional contextual information linked to the current instance.", default='')
+        context : str = pydantic.Field(description="Additional extensive contextual information linked to the current instance.", default='')
 
-    class CausalEdge(pydantic.BaseModel):
-        """ Attributes of a causal relationship """
-        
-        description : str = pydantic.Field(description="A high-level short atomic description of the causal relationship from the source variable to the target variable.", default='')
-        details : str = pydantic.Field(description="A detailled explanation of how the value of the source variable and affects the value of the target variable in the text.", default='')
+    class CausalEdge(pydantic.BaseModel): # /!\ The descriptions in nested classes are not forwarded to the model
+            """ Attributes of a causal relationship """
 
-    class CausalGraphAtttributes(pydantic.BaseModel):
+            source_node_id : str = pydantic.Field(description="The unique string identifier of the source variable.")
+            target_node_id : str = pydantic.Field(description="The unique string identifier of the target variable.")
+            description : str = pydantic.Field(description="A high-level short atomic description of the causal relationship from the source variable to the target variable.", default='')
+            details : str = pydantic.Field(description="A detailled explanation of how the value of the source variable and affects the value of the target variable in the text.", default='')
+
+    class CausalGraphAttributes(pydantic.BaseModel):
+
         """ Attributes of the causal graph """
-
-        observed_nodes : List[Tuple[str, 'LangchainGraphBuilderSingleton.CausalVariable']] = pydantic.Field(description="List of observed causal variables. Each entry is a tuple with the node ID and a dictionary of attributes." \
-                                                                        "The node ID is a unique string identifier for the causal variable, e.g. '0', '1', etc. " \
-                                                                        "The dictionary of attributes must contain the following fields: " \
-                                                                        "`description`: (str) a high-level short atomic description of causal variable; " \
-                                                                        "`type`: (str) the type of the variable (e.g. bool, int, set element, range element); " \
-                                                                        "`values`: (str) the set of possible values, if applicable; " \
-                                                                        "`current_value`: (str) the current instanciation of the variable; " \
-                                                                        "`context`: (str) additional contextual information linked to the current instance. "
+        observed_nodes : List['LangchainGraphBuilderSingleton.CausalVariable'] = pydantic.Field(description="List of observed causal variables. Each entry is a dictionary containing the following items:\n" \
+                                                                        "node_id : (str) A unique string identifier for the causal variable, e.g. '0', '1', etc.;\n" \
+                                                                        "description : (str) A high-level short atomic description of the causal variable;\n" \
+                                                                        "type : (str) the type of the variable (e.g. bool, int, set element, range element);\n" \
+                                                                        "values : (str) The set of possible values, if applicable;\n" \
+                                                                        "current_value : (str) The current instanciation of the variable;\n" \
+                                                                        "context : (str) Additional extensive contextual information linked to the current instance. "
                                                                          )
-        hidden_nodes : List[Tuple[str, 'LangchainGraphBuilderSingleton.CausalVariable']] = pydantic.Field(description="List of hidden causal variables. Each entry is a tuple with the node ID and a dictionary of attributes." \
-                                                                        "The node ID is a unique string identifier for the causal variable, e.g. 'h0', 'h1', etc. " \
-                                                                        "The dictionary of attributes is the same as for the observed nodes except that the `current_value` field is left empty." \
+        hidden_nodes : List['LangchainGraphBuilderSingleton.CausalVariable'] = pydantic.Field(description="List of hidden causal variables. Each entry is a dictionary containing the same items as the observed variables:\n" \
+                                                                        "node_id : (str) A unique string identifier for the hidden causal variable, e.g. 'h0', 'h1', etc.;\n" \
+                                                                        "description : (str) A high-level short atomic description of the causal variable;\n" \
+                                                                        "type : (str) the type of the variable (e.g. bool, int, set element, range element);\n" \
+                                                                        "values : (str) The set of possible values, if applicable;\n" \
+                                                                        "current_value : (str) This field is left empty because the current value of the variable is unknown since the variable is hidden;\n" \
+                                                                        "context : (str) Additional extensive contextual information linked to the current instance. "
                                                                         )
-        observed_edges : List[Tuple[str,str,'LangchainGraphBuilderSingleton.CausalEdge']] = pydantic.Field(description="List of observed causal relationships. Each entry is a tuple with the source node ID, the target node ID and a dictionary of attributes." \
-                                                                        "The source and target node IDs are the unique string identifiers of existing causal variables. Variables cannot be hidden variables. " \
-                                                                        "The dictionary of attributes must contain the following fields: " \
-                                                                        "`description`: (str) a high-level short atomic description of the causal relationship from the source variable to the target variable; " \
-                                                                        "`details`: (str) A detailled explanation of how the value of the source variable and affects the value of the target variable in the text. " \
+        observed_edges : List['LangchainGraphBuilderSingleton.CausalEdge'] = pydantic.Field(description="List of observed causal relationships. Each entry is a dictionary containing the following items:\n" \
+                                                                        "source_node_id : (str) A unique string identifier for the source causal variable (must exist and be in `observed_nodes`);\n" \
+                                                                        "target_node_id : (str) A unique string identifier for the target causal variable (must exist and be in `observed_nodes`);\n" \
+                                                                        "description : (str) A high-level short atomic description of the causal relationship from the source variable to the target variable;\n" \
+                                                                        "details : (str) A detailled explanation of how the value of the source variable and affects the value of the target variable in the text. "
                                                                         )
-        hidden_edges : List[Tuple[str,str,'LangchainGraphBuilderSingleton.CausalEdge']] = pydantic.Field(description="List of hidden causal relationships. Each entry is a tuple with the source node ID, the target node ID and a dictionary of attributes." \
-                                                                        "The source and target node IDs are the unique string identifiers of existing causal variables. Source variables must be hidden. Target variables must be observed. " \
-                                                                        "The dictionary of attributes is the same as for the observed edges." \
+        hidden_edges : List['LangchainGraphBuilderSingleton.CausalEdge'] = pydantic.Field(description="List of hidden causal relationships. Each entry is a dictionary containing the same items as the observed edges:\n" \
+                                                                        "source_node_id : (str) A unique string identifier for the source causal variable (must exist and be in `hidden_nodes`);\n" \
+                                                                        "target_node_id : (str) A unique string identifier for the target causal variable (must exist and be in `observed_nodes`);\n" \
+                                                                        "description : (str) A high-level short atomic description of the causal relationship from the source variable to the target variable;\n" \
+                                                                        "details : (str) A detailled explanation of how the value of the source variable and affects the value of the target variable in the text. "
                                                                         )
     
     def _build_prompt(self, text : str) -> Tuple[str,str]:
-        system_prompt = "Your task is to summarise a text into a list of instantiated causal variables and write down the causal relationships between them. " \
+        system_prompt = "Your task is to summarise a text into a json dictionary of instantiated causal variables and the causal relationships between them. " \
                 "Variables should be as atomic and detailled as possible. Causal relationships should describe how the value of the first variable affects the value of the second. " \
-                "One sentence usually describes two or more variables and connects them. For each variable, ask 'what are the causes of this variable's value? " \
-                "Is it fully explained by the available information or are some causes missing?'. " \
-                "If some causes seem to be missing, create new (hidden) variables. Hidden variables represent missing information to fully explain the value of one or more observed variables. " \
-                "Hidden variables cannot have incoming edges. Reason step-by-step. Start by describing the content of the text snippet, explain it with your own words, identify the major and minor variables and how they are connected. " \
-                "Answer the questions. Add the missing unknown variables when necessary. Follow carefully the instructions. Then, write down your answer using the given format very strictly."
+                "One sentence usually describes two or more variables and connects them. For each variable, the wollowing questions should be answered: 'what are the causes of this variable's value? " \
+                "Is it fully explained by the available information or are some causes missing?' If some causes seem to be missing, create new (hidden) variables. " \
+                "Hidden variables represent missing information to fully explain the value of one or more observed variables. They cannot have incoming edges. " \
+                "Identify the major and minor variables and how they are connected. Add the missing unknown variables when necessary. Follow carefully the instructions and write down your answer using only the given json format very strictly." \
+                "The format is as follows: \n\n" \
+                "{" \
+                "\"observed_nodes\": [\n" \
+                "    {\n" \
+                "        \"node_id\": (str) \"0\",\n" \
+                "        \"description\": (str) \"<high-level short atomic description of causal variable 0>\",\n" \
+                "        \"type\": (str) \"<variable type: e.g. bool, int, set element, range element>\",\n" \
+                "        \"values\": (str) \"<set of possible values, if applicable>\",\n" \
+                "        \"current_value\": (str) \"<current value>\",\n" \
+                "        \"context\": (str) \"<contextual information type> : <value of the contextual information linked to the current instance>\"\n" \
+                "    },\n" \
+                "    ...\n" \
+                "],\n" \
+                "\"hidden_nodes\": [\n" \
+                "    {\n" \
+                "        \"node_id\": (str) \"h0\",\n" \
+                "        \"description\": (str) \"<high-level short atomic description of the hidden causal variable>\",\n" \
+                "        \"type\": (str) \"<variable type: e.g. bool, int, set element, range element>\",\n" \
+                "        \"values\": (str) \"<set of possible values, if applicable>\",\n" \
+                "        \"current_value\": (str) \"\", # This field is left empty because the current value of the variable is unknown since the variable is hidden\n" \
+                "        \"context\": (str) \"<contextual information type> : <value of the contextual information linked to the current instance>\"\n" \
+                "    },\n" \
+                "    ...\n" \
+                "],\n" \
+                "\"observed_edges\": [\n" \
+                "    {\n" \
+                "        \"source_node_id\": (str) \"0\",\n" \
+                "        \"target_node_id\": (str) \"1\",\n" \
+                "        \"description\": (str) \"<high-level short atomic description of the causal relationship from variable 0 to 1>\",\n" \
+                "        \"details\": (str) \"<detailled explanation of how the value of variable 0 affects the value of variable 1 in the text>\"\n" \
+                "    },\n" \
+                "    ...\n" \
+                "],\n" \
+                "\"hidden_edges\": [\n" \
+                "    {\n" \
+                "        \"source_node_id\": (str) \"h0\",\n" \
+                "        \"target_node_id\": (str) \"1\",\n" \
+                "        \"description\": (str) \"<high-level short atomic description of the causal relationship from hidden variable 0 to 1>\",\n" \
+                "        \"details\": (str) \"<detailled explanation of how the value of hidden variable 0 affects the value of variable 1 in the text>\"\n" \
+                "    },\n" \
+                "    ...\n" \
+                "]\n" \
+                "}\n"
+                
         
         prompt = f"Here is the input text: \n\n```\n{text}\n```\n"
 
@@ -143,7 +205,7 @@ class LangchainGraphBuilderSingleton(LangchainSingleton, GraphBuilder):
 
     def _parse_text(self, text_name: str, text: str) -> dict:
         system_prompt, prompt = self._build_prompt(text)
-        answer = self._answer(system_prompt, prompt, LangchainGraphBuilderSingleton.CausalGraphAtttributes)
+        answer = self._answer(system_prompt, prompt, LangchainGraphBuilderSingleton.CausalGraphAttributes)
         
         return answer.dict()
     

@@ -22,22 +22,28 @@ class GraphBuilder(abc.ABC):
     def _parse_text(self, text_name : str, text : str) -> dict:
         pass
 
-    def _dict_to_graph(self, observed_nodes : List[Tuple[str, Dict[str,str]]], 
-                             hidden_nodes : List[Tuple[str, Dict[str,str]]],
-                             observed_edges : List[Tuple[str,str,Dict[str,str]]],
-                             hidden_edges : List[Tuple[str,str,Dict[str,str]]]) -> nx.Graph:
+    def _dict_to_graph(self, observed_nodes : List[Dict[str,str]], 
+                             hidden_nodes : List[ Dict[str,str]],
+                             observed_edges : List[Dict[str,str]],
+                             hidden_edges : List[Dict[str,str]]) -> nx.Graph:
         graph = nx.DiGraph()
 
-        for node, attributes in observed_nodes:
+        for  attributes in observed_nodes:
+            node = attributes.pop('node_id')
             graph.add_node(node, **attributes, observed=True)
 
-        for node, attributes in hidden_nodes:
+        for attributes in hidden_nodes:
+            node = attributes.pop('node_id')
             graph.add_node(node, **attributes, observed=False)
 
-        for source, target, attributes in observed_edges:
+        for attributes in observed_edges:
+            source = attributes.pop('source_node_id')
+            target = attributes.pop('target_node_id')
             graph.add_edge(source, target, **attributes, observed=True)
 
-        for source, target, attributes in hidden_edges:
+        for attributes in hidden_edges:
+            source = attributes.pop('source_node_id')
+            target = attributes.pop('target_node_id')
             graph.add_edge(source, target, **attributes, observed=False)
 
         return graph
@@ -139,10 +145,10 @@ class GPTGraphBuilder(GraphBuilder):
         # Extract nodes and edges
         txt = '\n\n'.join(self.reg_text.findall(summary))
         observed_nodes = self.reg_events.findall(txt)
-        observed_nodes = list(map(lambda x: (x[0], self._parse_value(x[1], self.reg_node_value)), observed_nodes))
+        observed_nodes = list(map(lambda x: {'node_id' : x[0], **self._parse_value(x[1], self.reg_node_value)}, observed_nodes))
         
         hidden_nodes = self.reg_missing_events.findall(txt)
-        hidden_nodes = list(map(lambda x: (x[0], self._parse_value(x[1], self.reg_node_value)), hidden_nodes))
+        hidden_nodes = list(map(lambda x: {'node_id' : x[0], **self._parse_value(x[1], self.reg_node_value)}, hidden_nodes))
 
         edges = self.reg_relations.findall(txt)
 
@@ -153,16 +159,16 @@ class GPTGraphBuilder(GraphBuilder):
             r = self._parse_value(r, self.reg_edge_value)
 
             if h.startswith('h'):
-                hidden_edges.append((h, t, r))
+                hidden_edges.append({'source_node_id' : h, 'target_node_id' : t, **r})
             else:
-                observed_edges.append((h, t, r))
+                observed_edges.append({'source_node_id' : h, 'target_node_id' : t, **r})
 
             if len(opt) > 0:
                 for o in self.reg_add_relations.findall(opt):
                     if o.startswith('h'):
-                        hidden_edges.append((o, t, r))
+                        hidden_edges.append({'source_node_id' : o, 'target_node_id' : t, **r})
                     else:
-                        observed_edges.append((o, t, r))
+                        observed_edges.append({'source_node_id' : o, 'target_node_id' : t, **r})
 
         return {'observed_nodes' : observed_nodes,
                 'hidden_nodes' : hidden_nodes,
