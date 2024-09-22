@@ -61,7 +61,14 @@ class LangchainSingleton(Singleton):
                 response = answer['parsed']
             else: # Attempt to recover from parsing error
                 fix_parser = RetryOutputParser.from_llm(parser=PydanticOutputParser(pydantic_object=structured_output_class), llm=self.instance, max_retries=self.max_retries)
-                response = answer['raw'].response_metadata['message']['tool_calls'][0]['function']['arguments'] # Works for all ChatModels
+
+                if 'tool_calls' in answer['raw'].response_metadata['message']: # If parsing failed on subparts of the structured output
+                    response = answer['raw'].response_metadata['message']['tool_calls'][0]['function']['arguments'] # Works for all ChatModels
+                elif 'content' in answer['raw'].response_metadata['message']: # If parsing failed on the whole structured output
+                    response = answer['raw'].response_metadata['message']['content']
+                else: # In case
+                    response = answer['raw'].content
+
                 response = fix_parser.parse_with_prompt(str(response), StringPromptValue(text=f"{system_message}\n\n{user_message}"))
 
         else:
@@ -100,18 +107,18 @@ class LangchainGraphBuilderSingleton(LangchainSingleton, GraphBuilder):
     class CausalVariable(pydantic.BaseModel): # /!\ The descriptions in nested classes are not forwarded to the model
         """ Attributes of a causal variable """
 
-        node_id : str = pydantic.Field(description="A unique string identifier for the causal variable, e.g. '0', '1', etc.")
+        node_id : str | int = pydantic.Field(description="A unique string identifier for the causal variable, e.g. '0', '1', etc.")
         description : str = pydantic.Field(description="A high-level short atomic description of the causal variable.", default='')
         type : str = pydantic.Field(description="The type of the variable (e.g. bool, int, set element, range element).", default='')
-        values : str = pydantic.Field(description="The set of possible values, if applicable.", default='')
-        current_value : str = pydantic.Field(description="The current instanciation of the variable.", default='')
+        values : str | List[str | int | float] | Set[str | int | float] = pydantic.Field(description="The set of possible values, if applicable.", default='')
+        current_value : str | int | float = pydantic.Field(description="The current instanciation of the variable.", default='')
         context : str = pydantic.Field(description="Additional extensive contextual information linked to the current instance.", default='')
 
     class CausalEdge(pydantic.BaseModel): # /!\ The descriptions in nested classes are not forwarded to the model
             """ Attributes of a causal relationship """
 
-            source_node_id : str = pydantic.Field(description="The unique string identifier of the source variable.")
-            target_node_id : str = pydantic.Field(description="The unique string identifier of the target variable.")
+            source_node_id : str | int = pydantic.Field(description="The unique string identifier of the source variable.")
+            target_node_id : str | int = pydantic.Field(description="The unique string identifier of the target variable.")
             description : str = pydantic.Field(description="A high-level short atomic description of the causal relationship from the source variable to the target variable.", default='')
             details : str = pydantic.Field(description="A detailled explanation of how the value of the source variable and affects the value of the target variable in the text.", default='')
 
@@ -202,10 +209,28 @@ class LangchainGraphBuilderSingleton(LangchainSingleton, GraphBuilder):
         prompt = f"Here is the input text: \n\n```\n{text}\n```\n"
 
         return system_prompt, prompt
+    
+    def _fix_errors(self, causal_graph : 'LangchainGraphBuilderSingleton.CausalGraphAttributes') -> None: # /!\ The fix is performed in-place
+        for node_list in [causal_graph.observed_nodes, causal_graph.hidden_nodes]: 
+            for node in node_list:
+                if not isinstance(node.node_id, str):
+                    node.node_id = str(node.node_id)
+                if not isinstance(node.current_value, str):
+                    node.current_value = str(node.current_value)
+                if not isinstance(node.values, str):
+                    node.values = str(node.values)
+
+        for edge_list in [causal_graph.observed_edges, causal_graph.hidden_edges]:
+            for edge in edge_list:
+                if not isinstance(edge.source_node_id, str):
+                    edge.source_node_id = str(edge.source_node_id)
+                if not isinstance(edge.target_node_id, str):
+                    edge.target_node_id = str(edge.target_node_id)
 
     def _parse_text(self, text_name: str, text: str) -> dict:
         system_prompt, prompt = self._build_prompt(text)
         answer = self._answer(system_prompt, prompt, LangchainGraphBuilderSingleton.CausalGraphAttributes)
+        self._fix_errors(answer)
         
         return answer.dict()
     
