@@ -14,7 +14,9 @@ def save_graph_as_png(graph : nx.Graph, output_path : str, node_labels : str | L
     is_dag = nx.is_directed_acyclic_graph(graph)
     if is_dag: # create topological order
         partial_order = list(nx.topological_generations(graph))
+        largest_layer_length = 0
         for layer, nodes in enumerate(partial_order[::-1]):
+            largest_layer_length = max(largest_layer_length, len(nodes))
             for node in nodes:
                 graph.nodes[node]['layer'] = layer
     
@@ -23,7 +25,7 @@ def save_graph_as_png(graph : nx.Graph, output_path : str, node_labels : str | L
 
     # Plot graph
     if is_dag:
-        pos = nx.multipartite_layout(graph, subset_key="layer", align='horizontal')
+        pos = nx.multipartite_layout(graph, subset_key="layer", align='horizontal', scale=largest_layer_length / 2)
     else:
         pos = nx.spring_layout(graph, k=1/(len(graph.nodes)**(1/3)))
 
