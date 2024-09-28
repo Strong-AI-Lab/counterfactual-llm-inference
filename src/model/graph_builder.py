@@ -39,12 +39,16 @@ class GraphBuilder(abc.ABC):
         for attributes in observed_edges:
             source = attributes.pop('source_node_id')
             target = attributes.pop('target_node_id')
-            graph.add_edge(source, target, **attributes, observed=True)
+
+            if graph.has_node(source) and graph.has_node(target):
+                graph.add_edge(source, target, **attributes, observed=True)
 
         for attributes in hidden_edges:
             source = attributes.pop('source_node_id')
             target = attributes.pop('target_node_id')
-            graph.add_edge(source, target, **attributes, observed=False)
+            
+            if graph.has_node(source) and graph.has_node(target):
+                graph.add_edge(source, target, **attributes, observed=False)
 
         return graph
     

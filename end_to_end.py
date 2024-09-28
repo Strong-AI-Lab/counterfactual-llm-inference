@@ -9,7 +9,7 @@ import random
 import networkx as nx
 
 from src.data.dataset import DATASETS
-from src.model.models import BUILDERS, MERGERS, INTERPRETERS, INFERENCE_ORACLES, EVALUATORS
+from src.model.models import BUILDERS, MERGERS, NODE_INTERPRETERS, INFERENCE_ORACLES, EVALUATORS
 from src.causal.counterfactual_inference import Query
 from src.model.singleton import handle_config_singleton
 from src.visualisation.visualisation import save_graph_as_png
@@ -77,7 +77,7 @@ def main(data_path : Union[str,List[str]],
 
     # Load interpreter: interpret a node to build alternative/counterfactual instantiations
     print(f"Using interpreter {interpreter_class}.")
-    interpreter = INTERPRETERS[interpreter_class](**interpreter_config)
+    interpreter = NODE_INTERPRETERS[interpreter_class](**interpreter_config)
 
     # Load oracle: answer counterfactual queries
     print(f"Using oracle {oracle_class}.")

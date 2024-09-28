@@ -45,6 +45,15 @@ class Query():
         traversal_cutoff : Optional[int]
             The maximum length of the paths to consider when computing causal paths. If None, no limit is applied. Default is None.
         """
+        if isinstance(observation_nodes, str):
+            observation_nodes = [observation_nodes]
+        if isinstance(intervention_nodes, str):
+            intervention_nodes = [intervention_nodes]
+        if isinstance(observation_values, str):
+            observation_values = [observation_values]
+        if isinstance(intervention_values, str):
+            intervention_values = [intervention_values]
+
         self.graph = graph
         self.oracle = oracle
         self.target_node = target_node

@@ -1,9 +1,9 @@
 
 import abc
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 
 
-class Interpreter(abc.ABC):
+class NodeInterpreter(abc.ABC):
 
     @abc.abstractmethod
     def interpret(self, attrs : Dict[str, Any]) -> str:
@@ -24,4 +24,28 @@ class Interpreter(abc.ABC):
 
     def __call__(self, attrs : Dict[str, Any]) -> str:
         return self.interpret(attrs)
-        
+
+
+class QueryInterpreter(abc.ABC):
+
+    @abc.abstractmethod
+    def interpret(self, text : str, nodes : Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        Interprets a text to propose a structured  dictionary of attributes.
+
+        Parameters
+        ----------
+        text : str
+            The text to interpret
+        nodes : Optional[List[str]], optional
+            The list of nodes to consider, by default None
+
+        Returns
+        -------
+        Dict[str, Any]
+            The structured dictionary of attributes
+        """
+        pass
+
+    def __call__(self, text : str, nodes : Optional[List[str]] = None) -> Dict[str, Any]:
+        return self.interpret(text, nodes)

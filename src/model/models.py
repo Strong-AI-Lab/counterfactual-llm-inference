@@ -6,7 +6,8 @@ from src.model.llms.langchain import (
     LangchainGraphAbstractionMergerSingleton, 
     LangchainGraphAnalogyMergerSingleton, 
     LangchainInferenceOracleSingleton, 
-    LangchainInterpreterSingleton, 
+    LangchainRandomInterpreterSingleton, 
+    LangchainTextInterpreterSingleton,
     LangchainEvaluatorSingleton
 )
 
@@ -33,8 +34,14 @@ INFERENCE_ORACLES = {
 
 
 
-INTERPRETERS = {
-    'langchain_singleton' : LangchainInterpreterSingleton
+NODE_INTERPRETERS = {
+    'langchain_singleton' : LangchainRandomInterpreterSingleton
+}
+
+
+
+QUERY_INTERPRETERS = {
+    'langchain_singleton' : LangchainTextInterpreterSingleton
 }
 
 

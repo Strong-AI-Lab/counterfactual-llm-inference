@@ -7,7 +7,7 @@ from src.model.singleton import Singleton
 from src.model.graph_builder import GraphBuilder
 from src.model.graph_merger import GraphAbstractionMerger, GraphAnalogyMerger
 from src.model.inference_oracle import InferenceOracle
-from src.model.interpreter import Interpreter
+from src.model.interpreter import NodeInterpreter, QueryInterpreter
 from src.model.evaluator import Evaluator
 
 import pydantic
@@ -155,7 +155,7 @@ class LangchainGraphBuilderSingleton(LangchainSingleton, GraphBuilder):
                                                                         )
     
     def _build_prompt(self, text : str) -> Tuple[str,str]:
-        system_prompt = "Your task is to summarise a text into a json dictionary of instantiated causal variables and the causal relationships between them. " \
+        system_prompt = "Your task is to summarise a text into a json dictionary of instantiated causal variables and the causal relationships between them. The obtained graph should be acyclic, i.e. no feedback loops are allowed. " \
                 "Variables should be as atomic and detailled as possible. Causal relationships should describe how the value of the first variable affects the value of the second. " \
                 "One sentence usually describes two or more variables and connects them. For each variable, the wollowing questions should be answered: 'what are the causes of this variable's value? " \
                 "Is it fully explained by the available information or are some causes missing?' If some causes seem to be missing, create new (hidden) variables. " \
@@ -387,7 +387,7 @@ class LangchainInferenceOracleSingleton(LangchainSingleton, InferenceOracle):
 
 
 
-class LangchainInterpreterSingleton(LangchainSingleton, Interpreter):
+class LangchainRandomInterpreterSingleton(LangchainSingleton, NodeInterpreter):
     class AlternativeValue(pydantic.BaseModel):
         """ Alternative/counterfactual value of a causal variable """
         
@@ -411,9 +411,60 @@ class LangchainInterpreterSingleton(LangchainSingleton, Interpreter):
     
     def interpret(self, attrs: Dict[str, Any]) -> str:
         system_prompt, prompt = self._build_prompt(attrs)
-        answer = self._answer(system_prompt, prompt, LangchainInterpreterSingleton.AlternativeValue)
+        answer = self._answer(system_prompt, prompt, LangchainRandomInterpreterSingleton.AlternativeValue)
         
         return answer.counterfactual_value
+    
+
+
+
+class LangchainTextInterpreterSingleton(LangchainSingleton, QueryInterpreter):
+    class ParsedQuery(pydantic.BaseModel):
+        """ Query parsed into a structured dictionary """
+        
+        target_variable : str = pydantic.Field(description="The name of the target node.", default='')
+        intervention_variable : str = pydantic.Field(description="The name of the intervention node.", default='')
+        intervention_new_value : str = pydantic.Field(description="The value of the intervention node after intervention.", default='')
+        inntervention_old_value : str = pydantic.Field(description="The old value of the intervention node before intervention.", default='')
+
+    def _build_prompt(self, text : str, nodes : Optional[List[Tuple[str,Dict[str,Any]]]] = None) -> Tuple[str,str]:
+        system_prompt = "Your task is to interpret a prompt text asking the result of a counterfactual query. " \
+                        "The prompt text is composed of a target variable, an intervention variable, the value of the intervention variable after the intervention and the value of the intervention variable before the intervention. " \
+                        "It has the shape \"Would Y if if X' instead of X?\" where Y is the target variable, X is the intervention variable and its value before the intervention, and X' is the value of the intervention variable after the intervention. " \
+                        "Be careful, X and its value may be stated in various way, e.g. \"not X\" if X is a boolean variable or \"X does ...\" if X is a variable with a specific value. " \
+                        "If you are given the list of variables and their types, select the right target and intervention IDs from the list. Provide the values of the intervention variable before and after the intervention. " \
+                        "Follow strictly the provided format."
+        
+        prompt = f"The prompt text is: \n```\n{text}\n```\n"
+        if nodes is not None:
+            str_nodes = [f"(ID: {idx} type: {attrs['type']} description: {attrs['description']})" for idx, attrs in nodes]
+            prompt += f"The list of variables is: {'; '.join(str_nodes)}. From the list, select the correct target variable ID, the correct intervention variable ID, the value of the intervention variable after the intervention and the value of the intervention variable before the intervention."
+        else:
+            prompt += "Select the target variable, the intervention variable, the value of the intervention variable after the intervention and the value of the intervention variable before the intervention."
+        
+        return system_prompt, prompt
+    
+    def _parse_errors(self, answer : Dict[str,Any], nodes : Optional[List[str]]) -> Dict[str,Any]:
+        node_descriptions = {attrs['description'].lower() : id for id, attrs in nodes}
+        
+        if answer['target_variable'].lower() in node_descriptions:
+            answer['target_variable'] = node_descriptions[answer['target_variable'].lower()]
+
+        if answer['intervention_variable'].lower() in node_descriptions:
+            answer['intervention_variable'] = node_descriptions[answer['intervention_variable'].lower()]
+        
+        return answer
+    
+    def interpret(self, text : str, nodes : Optional[List[str]] = None) -> Dict[str, Any]:
+        system_prompt, prompt = self._build_prompt(text, nodes)
+        answer = self._answer(system_prompt, prompt, LangchainTextInterpreterSingleton.ParsedQuery)
+
+        answer = answer.dict()
+
+        if nodes is not None:
+            answer = self._parse_errors(answer, nodes)
+
+        return answer
         
 
 
@@ -430,8 +481,14 @@ class LangchainEvaluatorSingleton(LangchainSingleton, Evaluator):
         system_prompt = "Your task is to evaluate the plausibility of a set of events linked by causal relationships. " \
                         "The events are described by a high-level description and a value. The events are linked by causal relationships. The causal relationships are described by a high-level description. " \
                         "The overall plausibility of the set of events corresponds to the factorisation of the plausibility of the each event's occurence and given its causes. " \
-                        "Reason step-by-step. Start by describing the events and the causal relationships. Explain with your own words the reasons for the plausibility of each event. " \
-                        "Finally, provide an overall score for the plausibility of the sequence of events. Give an explanation describing your reasoning. Provide an overall confidence score as a float between 0 and 1. Follow strictly the provided format."
+                        "Reason step-by-step and ive an explanation describing your reasoning. Start by describing the events and the causal relationships. Explain with your own words the reasons for the plausibility of each event. " \
+                        "Finally, provide an overall score as a float between 0 and 1 for the plausibility of the sequence of events. Provide an overall confidence score as a float between 0 and 1. Follow strictly the provided json format. " \
+                        "The format is as follows: \n\n" \
+                        "{" \
+                        "\"explanation\": \"<explanation of the evaluation>\",\n" \
+                        "\"score\": <float between 0 and 1>,\n" \
+                        "\"confidence\": <float between 0 and 1>\n" \
+                        "}\n"
         
         ordered_nodes = list(nx.topological_sort(graph))
         order = {node: i for i, node in enumerate(ordered_nodes)}
