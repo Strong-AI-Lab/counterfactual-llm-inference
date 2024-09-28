@@ -7,3 +7,4 @@ cache/
 causal_graphs/
 counterfactuals/
 scored_graphs/
+evaluation_logs/
