@@ -67,6 +67,8 @@ class CladderDataset(EvaluationDataset):
         gt_graph = self._parse_text_graph(item['prompt'])
         result_item['gt_graph'] = gt_graph
 
+        result_item['question_property'] = item['question_property']
+
         return result_item
     
     def __init__(self, path : Optional[Union[str,List[str]]] = None) -> None:
