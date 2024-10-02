@@ -77,6 +77,7 @@ def process_item(item : Dict[str,Any],
                  interpreter : Callable, 
                  evaluator : Callable, 
                  graph_traversal_cutoff : Optional[int] = None,
+                 no_build_graph : bool = False
                  ) -> Tuple[Dict[str,Any], nx.DiGraph, nx.DiGraph, nx.DiGraph]:
         
     name = item['name']
@@ -86,10 +87,13 @@ def process_item(item : Dict[str,Any],
     label = item['label']
     
     # Build graph
-    try:
-        graph = builder.build_graph(name, text)
-    except (KeyError, JSONDecodeError, OutputParserException, NetworkXError) as e:
-        raise e.__class__(f"Error building graph: {e}")
+    if no_build_graph:
+        graph = gt_graph
+    else:
+        try:
+            graph = builder.build_graph(name, text)
+        except (KeyError, JSONDecodeError, OutputParserException, NetworkXError) as e:
+            raise e.__class__(f"Error building graph: {e}")
 
     # Answer counterfactual queries (num_queries per graph)
     query_config = build_query(graph, query_text, interpreter)
@@ -188,6 +192,7 @@ def main(data_path : Union[str,List[str]],
          merger_class : Optional[str] = None, 
          merger_config : Optional[Dict[str,Any]] = None,
          graph_traversal_cutoff : Optional[int] = None,
+         no_build_graph : bool = False,
          save_graphs : bool = False,
          save_logs : bool = True,
          nb_queries : Optional[int] = None, # for debugging purposes
@@ -233,7 +238,7 @@ def main(data_path : Union[str,List[str]],
     scores = []
     for item in tqdm.tqdm(data):
         try:
-            score, gt_graph, graph, computation_graph = process_item(item, builder, oracle, interpreter, evaluator, graph_traversal_cutoff)
+            score, gt_graph, graph, computation_graph = process_item(item, builder, oracle, interpreter, evaluator, graph_traversal_cutoff, no_build_graph)
             scores.append(score)
 
             if save_logs or save_graphs:

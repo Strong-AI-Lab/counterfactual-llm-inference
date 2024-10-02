@@ -34,8 +34,14 @@ class CladderDataset(EvaluationDataset):
 
         graph = nx.DiGraph()
         edge_reg = re.compile(r'(.*) has a direct effect on (.*)')
+        cause_reg = re.compile(r'(.*) causes (.*)')
+        obs_reg = re.compile(r'We observe(.*)')
+
         for line in lines[:-1]:
             edge_match = edge_reg.match(line)
+            cause_match = cause_reg.match(line)
+            obs_match = obs_reg.match(line)
+
             if edge_match:
                 cause = edge_match.group(1)
                 effects = edge_match.group(2).split(' and ')
@@ -44,11 +50,19 @@ class CladderDataset(EvaluationDataset):
                 effects = [effect.lower() for effect in effects]
 
                 if not graph.has_node(cause):
-                    graph.add_node(cause)
+                    graph.add_node(cause, observed=True, description=f'{cause}. ', type='binary variable', details='', current_value='', context='')
                 for effect in effects:
                     if not graph.has_node(effect):
-                        graph.add_node(effect)
-                    graph.add_edge(cause, effect)
+                        graph.add_node(effect, observed=True, description=f'{effect}. ', type='binary variable', details='', current_value='', context='')
+                    graph.add_edge(cause, effect, observed=True, description=line, details='')
+            elif cause_match:
+                for node in graph.nodes:
+                    if re.search(node, cause_match.group(2).lower()):
+                        graph.nodes[node]['description'] += ' ' + line
+            elif obs_match:
+                for node in graph.nodes:
+                    if re.search(node, obs_match.group(1).lower()):
+                        graph.nodes[node]['current_value'] = line
 
         return graph
 
