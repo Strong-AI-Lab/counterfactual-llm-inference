@@ -1,0 +1,13 @@
+graph_save: causal_graphs/graph_20240918-042044.gml
+oracle_class: langchain_singleton
+oracle_config : 
+  model_type: ollama
+  model: llama3.1:70b
+target_node: '3'
+intervention_nodes:
+ - '0'
+ - '9'
+intervention_values:
+ - 'low'
+ - 'False'
+is_counterfactual: true

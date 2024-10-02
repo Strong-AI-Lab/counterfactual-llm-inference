@@ -1,0 +1,18 @@
+data_path: null
+dataset_class: cladder
+dataset_config: {}
+builder_class: langchain_singleton
+builder_config:
+  # model_type: ollama
+  # model: llama3.1:70b
+  model_type: openai
+  # model: gpt-4o
+  model: gpt-4o-mini
+  # model: gpt-3.5-turbo-0125
+  # model: gpt-4-1106-preview
+evaluator_class: langchain_singleton
+interpreter_class: langchain_singleton
+oracle_class: langchain_singleton
+save_graphs: False
+save_logs: True
+no_build_graph: False

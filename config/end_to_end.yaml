@@ -1,0 +1,14 @@
+data_path: data/data/extended/events2020/events/eng-5613032.json
+dataset_class: json
+dataset_config: {}
+builder_class: langchain_singleton
+builder_config:
+  model_type: ollama
+  model: llama3.1:70b
+evaluator_class: langchain_singleton
+interpreter_class: langchain_singleton
+oracle_class: langchain_singleton
+iterations: 1
+num_graphs: 1
+num_queries: 6
+max_intervention_nodes: 1
