@@ -4,6 +4,8 @@ from nltk import pos_tag
 from nltk.tokenize import word_tokenize
 from nltk.stem import PorterStemmer
 from nltk.corpus import wordnet
+import re
+import openai
 
 from typing import Tuple, List
 
@@ -24,6 +26,27 @@ def sem_equals(a : str, b :str) -> bool:
         return a == b
     else:
         return (a_pos and b_pos) or (a_neg and b_neg)
+
+
+
+def validate_with_llm(sentence : str, value : str) -> bool:
+    client = openai.OpenAI()
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+                {"role": "system", "content": f"Here is a sentence: '{sentence}'. Does the following value/statement '{value}' states the sentence as true, false or neutral/off-topic? Answer with a single word: 'yes', 'no', or 'neutral'."}
+            ],
+        max_tokens=5
+    )
+    t = re.search(r'yes', response.choices[0].message.content, re.IGNORECASE) is not None
+    f = re.search(r'no', response.choices[0].message.content, re.IGNORECASE) is not None
+
+    if t:
+        return True
+    elif f:
+        return False
+    else:
+        raise ValueError(f"Could not validate sentence: '{sentence}' with value: '{value}'. LLM response: '{response.choices[0].message.content}'")
     
 
 COMMON_SYNONYMS = {
@@ -53,7 +76,7 @@ def get_syn_anto(word : str) -> Tuple[List[str], List[str]]:
 
     return synonyms, antonyms
 
-def validate_sentence(sentence : str, value : str) -> bool:
+def validate_sentence(sentence : str, value : str, allow_llm_parsing : bool = False) -> bool:
     if len(value) == 0:
         raise ValueError(f"Value is empty for sentence: '{sentence}'")
 
@@ -114,7 +137,10 @@ def validate_sentence(sentence : str, value : str) -> bool:
             
         for ant in antonyms:
             if stemmer.stem(ant) in post_verb_tokens:
-                return negation   
+                return negation
+        
+    if allow_llm_parsing:
+        return validate_with_llm(sentence, value)
 
     # If no match, raise error
     raise ValueError(f"Could not validate sentence: '{sentence}' with value: '{value}'")

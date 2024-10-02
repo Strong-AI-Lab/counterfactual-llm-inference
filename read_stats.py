@@ -47,9 +47,9 @@ INFERENCE_ERR_REG = re.compile(r'Error computing counterfactuals:')
 ACYCLIC_ERR_REG = re.compile(r'graph should be directed acyclic')
 
 
-def fix_answer(answer : str, item : str) -> str:
+def fix_answer(answer : str, item : str, allow_llm_parsing : bool = False) -> str:
     estimand = QUERY_REG.search(item).group('tested_estimand')
-    val = validate_sentence(estimand, answer)
+    val = validate_sentence(estimand, answer, allow_llm_parsing=allow_llm_parsing)
     if val:
         return 'yes'
     else:
@@ -61,7 +61,7 @@ def to_float(value : str) -> float:
         return None
     return float(value)
 
-def read_sample_log(sample_log : str) -> dict:
+def read_sample_log(sample_log : str, allow_llm_parsing : bool = False) -> dict:
     log_stats = {}
     with open(sample_log, 'r') as f:
         for line in f:
@@ -76,7 +76,7 @@ def read_sample_log(sample_log : str) -> dict:
     unanswered = None
     if log_stats['answer'].lower() not in ['yes', 'true', '1', 'y', 't', 'no', 'false', '0', 'n', 'f']:
         try:
-            fixed_answer = fix_answer(log_stats['answer'], log_stats['item'])
+            fixed_answer = fix_answer(log_stats['answer'], log_stats['item'], allow_llm_parsing=allow_llm_parsing)
             fixed_correct = sem_equals(fixed_answer, log_stats['label'])
             correct = fixed_correct
         except ValueError as e:
@@ -129,9 +129,9 @@ def read_errors(sample_log : str) -> dict:
     with open(sample_log, 'r') as f:
         first_line = f.readline()
         if re.search(GRAPH_ERR_REG, first_line):
-            log_errs['errors_inference'] = 1
-        elif re.search(INFERENCE_ERR_REG, first_line):
             log_errs['errors_building_graph'] = 1
+        elif re.search(INFERENCE_ERR_REG, first_line):
+            log_errs['errors_inference'] = 1
         elif re.search(ACYCLIC_ERR_REG, first_line):
             log_errs['errors_acyclicity'] = 1
         else:
@@ -144,6 +144,7 @@ def read_errors(sample_log : str) -> dict:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('save_folder', type=str)
+    parser.add_argument('--allow_llm_parsing', action='store_true')
     args = parser.parse_args()
     save_folder = args.save_folder
 
@@ -162,7 +163,7 @@ def main():
 
     for sample_log in tqdm.tqdm(sample_logs):
         if os.path.exists(os.path.join(save_folder, sample_log, "logs.txt")):
-            log_values = read_sample_log(os.path.join(save_folder, sample_log, "logs.txt"))
+            log_values = read_sample_log(os.path.join(save_folder, sample_log, "logs.txt"), args.allow_llm_parsing)
             log_values['completed'] = 1
             stats.add_dict(log_values)
         if os.path.exists(os.path.join(save_folder, sample_log, "errors.txt")):
